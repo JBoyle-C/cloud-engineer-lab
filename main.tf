@@ -27,7 +27,6 @@ resource "aws_subnet" "public_subnet_a" {
   tags = {
     Name        = "Public Subnet A"
     Environment = "Dev"
-
   }
 }
 
@@ -40,7 +39,6 @@ resource "aws_subnet" "public_subnet_b" {
   tags = {
     Name        = "Public Subnet B"
     Environment = "Dev"
-
   }
 }
 
@@ -92,18 +90,15 @@ resource "aws_subnet" "data_app_subnet_b" {
   }
 }
 
-# This will create the door to the internet and attach it to the VPC 
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
   tags = {
     Name        = "lab-igw"
     Environment = "Dev"
-
   }
 }
 
-# Route Table, this will create a route table for the vpc
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -126,12 +121,10 @@ resource "aws_route_table_association" "public_a" {
 resource "aws_route_table_association" "public_b" {
   subnet_id      = aws_subnet.public_subnet_b.id
   route_table_id = aws_route_table.public.id
-
 }
 
-# Elastic IP for NAT Gateway
 resource "aws_eip" "nat" {
-  domain = "vpc" # tells AWS this EIP is for use inside a VPC
+  domain = "vpc"
 
   tags = {
     Name        = "lab-nat-eip"
@@ -139,7 +132,6 @@ resource "aws_eip" "nat" {
   }
 }
 
-# NAT Gateway in public_subnet_a
 resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public_subnet_a.id
@@ -147,11 +139,9 @@ resource "aws_nat_gateway" "main" {
   tags = {
     Name        = "lab-nat-gw"
     Environment = "Dev"
-
   }
 }
 
-# Private Route Table
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
@@ -166,27 +156,98 @@ resource "aws_route_table" "private" {
   }
 }
 
-# Associate Private Subnets with Private Route Table  
 resource "aws_route_table_association" "private_a" {
   subnet_id      = aws_subnet.private_subnet_a.id
   route_table_id = aws_route_table.private.id
-
 }
 
 resource "aws_route_table_association" "private_b" {
   subnet_id      = aws_subnet.private_subnet_b.id
   route_table_id = aws_route_table.private.id
-
 }
 
 resource "aws_route_table_association" "data_a" {
   subnet_id      = aws_subnet.data_app_subnet_a.id
   route_table_id = aws_route_table.private.id
-
 }
-
 
 resource "aws_route_table_association" "data_b" {
   subnet_id      = aws_subnet.data_app_subnet_b.id
   route_table_id = aws_route_table.private.id
+}
+
+resource "aws_security_group" "bastion" {
+  name        = "bastion-sg"
+  description = "Allow SSH from my IP"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "SSH from my IP"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["98.167.109.57/32"]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "bastion-sg"
+  }
+}
+
+resource "aws_security_group" "private" {
+  name        = "private-sg"
+  description = "Allow SSH from bastion only"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "SSH from bastion"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion.id]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "private-sg"
+  }
+}
+
+resource "aws_instance" "bastion" {
+  ami                    = "ami-0f3caa1cf4417e51b"
+  instance_type          = "t2.micro"
+  key_name               = "cloudmedsec-key"
+  subnet_id              = aws_subnet.public_subnet_a.id
+  vpc_security_group_ids = [aws_security_group.bastion.id]
+
+  tags = {
+    Name = "bastion-host"
+  }
+}
+
+resource "aws_instance" "private" {
+  ami                    = "ami-0f3caa1cf4417e51b"
+  instance_type          = "t2.micro"
+  key_name               = "cloudmedsec-key"
+  subnet_id              = aws_subnet.private_subnet_a.id
+  vpc_security_group_ids = [aws_security_group.private.id]
+
+  tags = {
+    Name = "private-instance"
+  }
 }
