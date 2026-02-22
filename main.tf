@@ -251,3 +251,61 @@ resource "aws_instance" "private" {
     Name = "private-instance"
   }
 }
+
+resource "aws_db_subnet_group" "main" {
+  name       = "cloudmedsec-db-subnet-group"
+  subnet_ids = [aws_subnet.data_app_subnet_a.id, aws_subnet.data_app_subnet_b.id]
+
+  tags = {
+    Name = "CloudMedSec DB Subnet Group"
+  }
+}
+
+resource "aws_security_group" "database" {
+  name        = "database-sg"
+  description = "Allow PostgreSQL from private subnets only"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "PostgreSQL from private subnets"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.2.0/24", "10.0.3.0/24"]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "database-sg"
+  }
+}
+
+resource "aws_db_instance" "main" {
+  identifier        = "cloudmedsec-db"
+  engine            = "postgres"
+  engine_version    = "16.6"
+  instance_class    = "db.t3.micro"
+  allocated_storage = 20
+  storage_encrypted = true
+
+  db_name  = "cloudmedsec"
+  username = "dbadmin"
+  password = "ChangeThisPassword123!"
+
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.database.id]
+
+  multi_az            = true
+  skip_final_snapshot = true
+
+  tags = {
+    Name = "CloudMedSec Database"
+  }
+}
