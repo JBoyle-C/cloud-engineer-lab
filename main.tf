@@ -3,6 +3,9 @@ terraform {
     aws = {
       source = "hashicorp/aws"
     }
+    random = {
+      source = "hashicorp/random"
+    }
   }
 }
 
@@ -308,4 +311,132 @@ resource "aws_db_instance" "main" {
   tags = {
     Name = "CloudMedSec Database"
   }
+}
+# S3 Bucket for Patient Medical Records
+resource "aws_s3_bucket" "medical_records" {
+  bucket = "cloudmedsec-medical-records-${random_string.suffix.result}"
+
+  tags = {
+    Name        = "CloudMedSec Medical Records"
+    Environment = "Production"
+  }
+}
+
+# Random suffix for unique bucket names
+resource "random_string" "suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "medical_records" {
+  bucket = aws_s3_bucket.medical_records.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+
+resource "aws_s3_bucket_versioning" "medical_records" {
+  bucket = aws_s3_bucket.medical_records.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket" "medical_imaging" {
+  bucket = "cloudmedsec-imaging-${random_string.suffix.result}"
+
+  tags = {
+    Name       = "CloudMedSec Medical Imaging"
+    Enviroment = "Production"
+  }
+}
+
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "medical_imaging" {
+  bucket = aws_s3_bucket.medical_imaging.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+
+resource "aws_s3_bucket_versioning" "medical_imaging" {
+  bucket = aws_s3_bucket.medical_imaging.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+
+resource "aws_s3_bucket" "audit_logs" {
+  bucket = "cloudmedsec-audit-logs-${random_string.suffix.result}"
+
+  tags = {
+    Name        = "CloudMedSec Audit logs"
+    Environment = "Production"
+
+  }
+}
+
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "audit_logs" {
+  bucket = aws_s3_bucket.audit_logs.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+
+resource "aws_s3_bucket_versioning" "audit_logs" {
+  bucket = aws_s3_bucket.audit_logs.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# Block public access - Medical Records
+resource "aws_s3_bucket_public_access_block" "medical_records" {
+  bucket = aws_s3_bucket.medical_records.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+
+}
+
+# Block public access - Medical Imaging 
+resource "aws_s3_bucket_public_access_block" "medical_imagaing" {
+  bucket = aws_s3_bucket.medical_imaging.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+
+}
+
+resource "aws_s3_bucket_public_access_block" "audit_logs" {
+  bucket = aws_s3_bucket.audit_logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+
 }
