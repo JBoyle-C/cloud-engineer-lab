@@ -440,3 +440,24 @@ resource "aws_s3_bucket_public_access_block" "audit_logs" {
   restrict_public_buckets = true
 
 }
+
+# Lifecycle policy for medical imaging
+resource "aws_s3_bucket_lifecycle_configuration" "medical_imaging" {
+  bucket = aws_s3_bucket.medical_imaging.id
+
+  rule {
+    id     = "move-old-images-to-glacier"
+    status = "Enabled"
+
+    transition {
+      days          = 90
+      storage_class = "DEEP_ARCHIVE"
+    }
+  }
+}
+
+
+output "medical_imaging_bucket_name" {
+  value = aws_s3_bucket.medical_imaging.id
+
+}
