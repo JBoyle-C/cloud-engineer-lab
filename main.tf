@@ -461,3 +461,159 @@ output "medical_imaging_bucket_name" {
   value = aws_s3_bucket.medical_imaging.id
 
 }
+
+
+# Security Group for ALB  
+resource "aws_security_group" "alb" {
+  name        = "alb-sg"
+  description = "Allow HTTP from the internet"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "HTTP from internet"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "alb-sg"
+  }
+}
+
+# Application Load Balancer 
+resource "aws_lb" "main" {
+  name               = "cloudmedsec-alb"
+  internal           = false # This means that it is internet facing(public can access it. )
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = [aws_subnet.public_subnet_a.id, aws_subnet.public_subnet_b.id]
+
+  tags = {
+    Name = "CloudMedSec ALB"
+  }
+}
+
+
+# Target Group for EC2 instances 
+resource "aws_lb_target_group" "app" {
+  name     = "cloudmedsec-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+
+  health_check {
+    path                = "/"
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    interval            = 30
+
+  }
+  tags = {
+    Name = "CloudMedSec Target Group"
+
+  }
+}
+
+
+# ALB Listener  
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+}
+
+
+# Security Group for App Servers
+resource "aws_security_group" "app" {
+  name        = "app-sg"
+  description = "Allow HTTP from ALB only"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "HTTP from ALB"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+
+  }
+  tags = {
+    Name = "app-sg"
+  }
+}
+
+
+# App Server 1 in private_subnet_a  
+
+resource "aws_instance" "app1" {
+  ami                    = "ami-0f3caa1cf4417e51b"
+  instance_type          = "t2.micro"
+  subnet_id              = aws_subnet.private_subnet_a.id
+  vpc_security_group_ids = [aws_security_group.app.id]
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1>CloudMedSec App Server 1</h1>" > /var/www/html/index.html
+              EOF
+
+  tags = {
+    Name = "app-server-1"
+  }
+}
+
+# App Server 2 in private_subnet_b
+resource "aws_instance" "app2" {
+  ami                    = "ami-0f3caa1cf4417e51b"
+  instance_type          = "t2.micro"
+  subnet_id              = aws_subnet.private_subnet_b.id
+  vpc_security_group_ids = [aws_security_group.app.id]
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1>CloudMedSec App Server 2</h1>" > /var/www/html/index.html
+              EOF
+
+  tags = {
+    Name = "app-server-2"
+  }
+}
+
+
+# Attach app1 to target group
+resource "aws_lb_target_group_attachment" "app1" {
+  target_group_arn = aws_lb_target_group.app.arn
+  target_id        = aws_instance.app1.id
+  port             = 80
+
+}
+
+# Attach app2 to target group
+resource "aws_lb_target_group_attachment" "app2" {
+  target_group_arn = aws_lb_target_group.app.arn
+  target_id        = aws_instance.app2.id
+  port             = 80
+}
